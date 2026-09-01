@@ -6,6 +6,10 @@
   <title>Warehouse Master Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Direct Reliable Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 </head>
 <body class="bg-slate-100 min-h-screen text-slate-800 font-sans">
 
@@ -17,7 +21,7 @@
           <i class="fa-solid fa-boxes-stacked text-2xl"></i>
         </div>
         <h1 class="text-xl font-bold text-slate-900">Warehouse Portal</h1>
-        <p class="text-xs text-slate-500">Select user & enter 4-digit PIN</p>
+        <p class="text-xs text-slate-500">Select profile & enter 4-digit PIN</p>
       </div>
 
       <div class="space-y-4">
@@ -47,7 +51,7 @@
 
         <p id="loginError" class="text-xs text-red-500 font-medium text-center hidden">Invalid PIN! Please check and try again.</p>
 
-        <button onclick="handleLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition shadow">
+        <button id="loginSubmitBtn" onclick="handleLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition shadow">
           Login to Dashboard
         </button>
       </div>
@@ -79,8 +83,8 @@
         <!-- SEARCH BAR -->
         <div class="relative">
           <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400 text-xs"></i>
-          <input id="searchInput" onkeyup="window.onSearchChange()" oninput="window.onSearchChange()" type="text" placeholder="Type PK (e.g. PK3), Box number, Picker or Packer name..." class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
-          <button id="clearSearchBtn" onclick="window.clearSearch()" class="hidden absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 text-xs">
+          <input id="searchInput" oninput="onSearchChange()" type="text" placeholder="Search PK batch, Box number, Picker, Packer..." class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+          <button id="clearSearchBtn" onclick="clearSearch()" class="hidden absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 text-xs">
             <i class="fa-solid fa-circle-xmark"></i>
           </button>
         </div>
@@ -101,7 +105,7 @@
         <button onclick="closeAddModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
-      <form id="newBatchForm" class="space-y-3">
+      <form id="newBatchForm" onsubmit="handleFormSubmit(event)" class="space-y-3">
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">PK Batch</label>
@@ -159,8 +163,25 @@
     </div>
   </div>
 
-  <!-- JAVASCRIPT APP LOGIC -->
+  <!-- PURE SCRIPT (NO ES MODULES) -->
   <script>
+    // 1. Firebase Configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyCOY9tUBNH3O9JM3LV9ICgoO2y9PIs9dQY",
+      authDomain: "warehouse-af16e.firebaseapp.com",
+      projectId: "warehouse-af16e",
+      storageBucket: "warehouse-af16e.firebasestorage.app",
+      messagingSenderId: "574015704554",
+      appId: "1:574015704554:web:5f2945974eaa50c85df693"
+    };
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.firestore();
+    const ordersCol = db.collection("warehouse_tasks");
+
+    // 2. Users & State
     const USERS = {
       "admin_zoro": { name: "Zoro", role: "admin", pin: "1111" },
       "admin_aditya": { name: "Aditya", role: "admin", pin: "2222" },
@@ -171,38 +192,28 @@
       "packer_komal": { name: "Komal", role: "packer", pin: "4002" }
     };
 
-    window.currentUser = null;
-    window.allLiveTasks = [];
+    let currentUser = null;
+    let allLiveTasks = [];
+    let unsubscribeFirestore = null;
 
-    // AUTO-LOGIN CHECK
-    document.addEventListener("DOMContentLoaded", () => {
-      const savedUser = localStorage.getItem("warehouseLoggedInUser");
-      if (savedUser && USERS[savedUser]) {
-        document.getElementById("userSelect").value = savedUser;
-        document.getElementById("pinInput").value = USERS[savedUser].pin;
-        setTimeout(() => window.handleLogin(), 300);
-      }
-    });
-
-    window.handleLogin = () => {
+    // 3. Login / Logout Logic
+    function handleLogin() {
       const selectedKey = document.getElementById("userSelect").value;
       const enteredPin = document.getElementById("pinInput").value;
       const user = USERS[selectedKey];
 
       if (user && user.pin === enteredPin) {
-        window.currentUser = user;
-        
-        // Save to browser memory
-        localStorage.setItem("warehouseLoggedInUser", selectedKey);
+        currentUser = user;
+        localStorage.setItem("wh_user_key", selectedKey);
 
         document.getElementById("loginError").classList.add("hidden");
         document.getElementById("loginScreen").classList.add("hidden");
         document.getElementById("appScreen").classList.remove("hidden");
         
-        document.getElementById("displayUserName").textContent = window.currentUser.name;
-        document.getElementById("displayUserRole").textContent = window.currentUser.role.toUpperCase();
+        document.getElementById("displayUserName").textContent = currentUser.name;
+        document.getElementById("displayUserRole").textContent = currentUser.role.toUpperCase();
 
-        if (window.currentUser.role === 'admin') {
+        if (currentUser.role === 'admin') {
           document.getElementById("addBoxBtn").classList.remove("hidden");
           document.getElementById("deleteLastBtn").classList.remove("hidden");
         } else {
@@ -210,97 +221,95 @@
           document.getElementById("deleteLastBtn").classList.add("hidden");
         }
 
-        if(window.startDatabaseListener) window.startDatabaseListener();
+        startRealtimeSync();
       } else {
         document.getElementById("loginError").classList.remove("hidden");
       }
-    };
+    }
 
-    window.handleLogout = () => {
-      window.currentUser = null;
-      // Remove from browser memory
-      localStorage.removeItem("warehouseLoggedInUser");
+    function handleLogout() {
+      currentUser = null;
+      localStorage.removeItem("wh_user_key");
+      if (unsubscribeFirestore) unsubscribeFirestore();
       
       document.getElementById("pinInput").value = "";
       document.getElementById("searchInput").value = "";
       document.getElementById("appScreen").classList.add("hidden");
       document.getElementById("loginScreen").classList.remove("hidden");
-    };
+    }
 
-    window.openAddModal = () => document.getElementById("addModal").classList.remove("hidden");
-    window.closeAddModal = () => {
+    // Check Auto Login
+    window.addEventListener("DOMContentLoaded", () => {
+      const savedKey = localStorage.getItem("wh_user_key");
+      if (savedKey && USERS[savedKey]) {
+        document.getElementById("userSelect").value = savedKey;
+        document.getElementById("pinInput").value = USERS[savedKey].pin;
+        handleLogin();
+      }
+    });
+
+    // 4. Modal Controls
+    function openAddModal() {
+      document.getElementById("addModal").classList.remove("hidden");
+    }
+    function closeAddModal() {
       document.getElementById("addModal").classList.add("hidden");
       document.getElementById("newBatchForm").reset();
-    };
+    }
 
-    window.onSearchChange = () => {
+    // 5. Search Controls
+    function onSearchChange() {
       const val = document.getElementById("searchInput").value;
       const clearBtn = document.getElementById("clearSearchBtn");
       if (val.trim() !== "") clearBtn.classList.remove("hidden");
       else clearBtn.classList.add("hidden");
-      if(window.renderCards) window.renderCards();
-    };
+      renderCards();
+    }
 
-    window.clearSearch = () => {
+    function clearSearch() {
       const input = document.getElementById("searchInput");
       if (input) input.value = "";
       document.getElementById("clearSearchBtn").classList.add("hidden");
-      if(window.renderCards) window.renderCards();
-    };
-  </script>
+      renderCards();
+    }
 
-  <!-- FIREBASE MODULE -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, serverTimestamp } 
-      from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    // 6. Firestore Real-time Sync
+    function startRealtimeSync() {
+      if (unsubscribeFirestore) unsubscribeFirestore();
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyCOY9tUBNH3O9JM3LV9ICgoO2y9PIs9dQY",
-      authDomain: "warehouse-af16e.firebaseapp.com",
-      projectId: "warehouse-af16e",
-      storageBucket: "warehouse-af16e.firebasestorage.app",
-      messagingSenderId: "574015704554",
-      appId: "1:574015704554:web:5f2945974eaa50c85df693"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const ordersCol = collection(db, "warehouse_tasks");
-
-    let dbListener = null;
-
-    window.startDatabaseListener = function() {
-      if (dbListener) dbListener(); // Stop old listener if exists
-      
-      dbListener = onSnapshot(ordersCol, (snapshot) => {
-        window.allLiveTasks = [];
+      unsubscribeFirestore = ordersCol.onSnapshot((snapshot) => {
+        allLiveTasks = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
-          let ts = data.createdAt?.seconds || (Date.now() / 1000);
-          window.allLiveTasks.push({ id: docSnap.id, ...data, _time: ts });
+          let ts = (data.createdAt && data.createdAt.seconds) ? data.createdAt.seconds : (Date.now() / 1000);
+          allLiveTasks.push({ id: docSnap.id, ...data, _time: ts });
         });
-        window.allLiveTasks.sort((a, b) => b._time - a._time);
-        window.renderCards();
-      }, (error) => {
-        console.error("Firebase Error: ", error);
-      });
-    };
 
-    window.renderCards = function() {
+        // Always sort newest tasks at the top
+        allLiveTasks.sort((a, b) => b._time - a._time);
+        renderCards();
+      }, (err) => {
+        alert("Database connection error: " + err.message);
+      });
+    }
+
+    // 7. Render UI
+    function renderCards() {
       const grid = document.getElementById("cardsGrid");
-      if (!grid || !window.currentUser) return;
+      if (!grid || !currentUser) return;
       grid.innerHTML = "";
       
       const searchRaw = (document.getElementById("searchInput")?.value || "").toLowerCase().trim();
 
-      let userList = window.allLiveTasks.filter(item => {
-        if (window.currentUser.role === 'admin') return true;
-        if (window.currentUser.role === 'picker') return (item.picker || '').toLowerCase() === window.currentUser.name.toLowerCase();
-        if (window.currentUser.role === 'packer') return (item.packer || '').toLowerCase() === window.currentUser.name.toLowerCase();
+      // Filter by role
+      let userList = allLiveTasks.filter(item => {
+        if (currentUser.role === 'admin') return true;
+        if (currentUser.role === 'picker') return (item.picker || '').toLowerCase() === currentUser.name.toLowerCase();
+        if (currentUser.role === 'packer') return (item.packer || '').toLowerCase() === currentUser.name.toLowerCase();
         return false;
       });
 
+      // Filter by search
       let displayList = userList.filter(item => {
         if (!searchRaw) return true;
         const fullString = [item.pkBatch, item.boxNo, item.picker, item.packer, item.orderType, item.notes].join(" ").toLowerCase();
@@ -308,7 +317,7 @@
       });
 
       if (displayList.length === 0) {
-        grid.innerHTML = `<div class="col-span-full py-12 text-center text-slate-400 font-medium">No tasks found</div>`;
+        grid.innerHTML = `<div class="col-span-full py-12 text-center text-slate-400 font-medium">No matching tasks found</div>`;
         return;
       }
 
@@ -327,7 +336,7 @@
               </div>
               <div class="flex items-center gap-2">
                 <span class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">${item.orderType || 'General'}</span>
-                ${window.currentUser.role === 'admin' ? `<button onclick="window.deleteDocItem('${item.id}', '${item.pkBatch} - ${item.boxNo}')" class="text-red-400 hover:text-red-600 p-1"><i class="fa-solid fa-trash-can text-sm"></i></button>` : ''}
+                ${currentUser.role === 'admin' ? `<button onclick="deleteDocItem('${item.id}', '${item.pkBatch} - ${item.boxNo}')" class="text-red-400 hover:text-red-600 p-1" title="Delete box"><i class="fa-solid fa-trash-can text-sm"></i></button>` : ''}
               </div>
             </div>
             <div class="text-xs space-y-1 my-3 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
@@ -338,27 +347,32 @@
             ${item.notes ? `<p class="text-xs bg-amber-50 text-amber-900 border border-amber-200 p-2 rounded-lg mb-3">⚠️ ${item.notes}</p>` : ''}
           </div>
           <div class="pt-3 border-t border-slate-100 space-y-2">
-            ${(window.currentUser.role === 'picker' || window.currentUser.role === 'admin') ? `
+            ${(currentUser.role === 'picker' || currentUser.role === 'admin') ? `
               <div class="flex gap-1.5 items-center">
                 <span class="text-[11px] font-bold text-slate-400 w-12">Pick:</span>
-                <button onclick="window.updatePickStatus('${item.id}', 'Assigned')" class="flex-1 py-1 text-xs font-medium rounded ${item.pickingStatus === 'Assigned' ? 'bg-slate-800 text-white' : 'bg-slate-100'}">Assigned</button>
-                <button onclick="window.updatePickStatus('${item.id}', 'Ongoing')" class="flex-1 py-1 text-xs font-medium rounded ${item.pickingStatus === 'Ongoing' ? 'bg-amber-500 text-white' : 'bg-slate-100'}">Ongoing</button>
-                <button onclick="window.updatePickStatus('${item.id}', 'Complete')" class="flex-1 py-1 text-xs font-medium rounded ${item.pickingStatus === 'Complete' ? 'bg-emerald-600 text-white' : 'bg-slate-100'}">Done</button>
+                <button onclick="updatePickStatus('${item.id}', 'Assigned')" class="flex-1 py-1 text-xs font-medium rounded ${item.pickingStatus === 'Assigned' ? 'bg-slate-800 text-white' : 'bg-slate-100'}">Assigned</button>
+                <button onclick="updatePickStatus('${item.id}', 'Ongoing')" class="flex-1 py-1 text-xs font-medium rounded ${item.pickingStatus === 'Ongoing' ? 'bg-amber-500 text-white' : 'bg-slate-100'}">Ongoing</button>
+                <button onclick="updatePickStatus('${item.id}', 'Complete')" class="flex-1 py-1 text-xs font-medium rounded ${item.pickingStatus === 'Complete' ? 'bg-emerald-600 text-white' : 'bg-slate-100'}">Done</button>
               </div>
             ` : ''}
-            ${(window.currentUser.role === 'packer' || window.currentUser.role === 'admin') ? `
+            ${(currentUser.role === 'packer' || currentUser.role === 'admin') ? `
               <div class="flex gap-1.5 items-center">
                 <span class="text-[11px] font-bold text-slate-400 w-12">Pack:</span>
-                <button onclick="window.updatePackStatus('${item.id}', 'Assigned')" class="flex-1 py-1 text-xs font-medium rounded ${item.packingStatus === 'Assigned' ? 'bg-slate-800 text-white' : 'bg-slate-100'}">Assigned</button>
-                <button onclick="window.updatePackStatus('${item.id}', 'Ongoing')" class="flex-1 py-1 text-xs font-medium rounded ${item.packingStatus === 'Ongoing' ? 'bg-amber-500 text-white' : 'bg-slate-100'}">Ongoing</button>
-                <button onclick="window.updatePackStatus('${item.id}', 'Complete')" class="flex-1 py-1 text-xs font-medium rounded ${item.packingStatus === 'Complete' ? 'bg-emerald-600 text-white' : 'bg-slate-100'}">Done</button>
+                <button onclick="updatePackStatus('${item.id}', 'Assigned')" class="flex-1 py-1 text-xs font-medium rounded ${item.packingStatus === 'Assigned' ? 'bg-slate-800 text-white' : 'bg-slate-100'}">Assigned</button>
+                <button onclick="updatePackStatus('${item.id}', 'Ongoing')" class="flex-1 py-1 text-xs font-medium rounded ${item.packingStatus === 'Ongoing' ? 'bg-amber-500 text-white' : 'bg-slate-100'}">Ongoing</button>
+                <button onclick="updatePackStatus('${item.id}', 'Complete')" class="flex-1 py-1 text-xs font-medium rounded ${item.packingStatus === 'Complete' ? 'bg-emerald-600 text-white' : 'bg-slate-100'}">Done</button>
               </div>
               <div class="flex items-center gap-2 pt-1">
                 <input type="number" id="qty_${item.id}" placeholder="Pending Qty" value="${item.pendingQty || ''}" class="w-1/2 border p-1 text-xs rounded text-center">
-                <button onclick="window.saveQty('${item.id}')" class="w-1/2 bg-slate-200 hover:bg-slate-300 py-1 text-xs font-semibold rounded">Save Qty</button>
+                <button onclick="saveQty('${item.id}')" class="w-1/2 bg-slate-200 hover:bg-slate-300 py-1 text-xs font-semibold rounded">Save Qty</button>
               </div>
             ` : ''}
-            ${window.currentUser.role === 'admin' ? `
+            ${currentUser.role === 'admin' ? `
               <div class="flex justify-between items-center pt-2 text-xs border-t border-dashed">
-                <button onclick="window.toggleErrorFlag('${item.id}', ${item.hasError || false})" class="text-red-600 font-semibold hover:underline">${item.hasError ? 'Clear Error' : 'Flag Error'}</button>
-                <button onclick="window.deleteDocItem('${item.id}', '${item.pkBa
+                <button onclick="toggleErrorFlag('${item.id}', ${item.hasError || false})" class="text-red-600 font-semibold hover:underline">${item.hasError ? 'Clear Error' : 'Flag Error'}</button>
+                <button onclick="deleteDocItem('${item.id}', '${item.pkBatch} - ${item.boxNo}')" class="text-red-600 hover:underline font-medium">Delete Box</button>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      
