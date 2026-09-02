@@ -47,7 +47,8 @@
 
         <p id="loginError" class="text-xs text-red-500 font-medium text-center hidden">Invalid PIN! Please check and try again.</p>
 
-        <button onclick="handleLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition shadow">
+        <!-- FIX: Added window. to handleLogin() -->
+        <button onclick="window.handleLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition shadow">
           Login to Dashboard
         </button>
       </div>
@@ -64,10 +65,12 @@
           <span id="displayUserRole" class="text-xs font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-100 text-blue-700"></span>
         </div>
         <div class="flex gap-2 items-center">
-          <button id="addBoxBtn" onclick="openAddModal()" class="hidden bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow transition">
+          <!-- FIX: Added window. to openAddModal() -->
+          <button id="addBoxBtn" onclick="window.openAddModal()" class="hidden bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow transition">
             + New Box / PK
           </button>
-          <button onclick="handleLogout()" class="text-slate-500 hover:text-red-600 p-2 rounded-lg text-sm" title="Logout">
+          <!-- FIX: Added window. to handleLogout() -->
+          <button onclick="window.handleLogout()" class="text-slate-500 hover:text-red-600 p-2 rounded-lg text-sm" title="Logout">
             <i class="fa-solid fa-arrow-right-from-bracket"></i>
           </button>
         </div>
@@ -87,7 +90,8 @@
     <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center mb-4">
         <h3 id="modalTitle" class="text-base font-bold text-slate-900">Add New PK / Box Entry</h3>
-        <button onclick="closeAddModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+        <!-- FIX: Added window. to closeAddModal() -->
+        <button onclick="window.closeAddModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
       <form id="newBatchForm" class="space-y-3">
@@ -141,7 +145,8 @@
         </div>
 
         <div class="flex gap-2 pt-3">
-          <button type="button" onclick="closeAddModal()" class="w-1/2 py-2 border rounded-lg text-sm text-slate-600 font-medium">Cancel</button>
+          <!-- FIX: Added window. to closeAddModal() -->
+          <button type="button" onclick="window.closeAddModal()" class="w-1/2 py-2 border rounded-lg text-sm text-slate-600 font-medium">Cancel</button>
           <button type="submit" class="w-1/2 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 shadow">Save Box</button>
         </div>
       </form>
@@ -154,7 +159,6 @@
     import { getFirestore, collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, serverTimestamp } 
       from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    // ✅ ACTUAL FIREBASE CONFIG ADDED BACK
     const firebaseConfig = {
       apiKey: "AIzaSyCOY9tUBNH3O9JM3LV9ICgoO2y9PIs9dQY",
       authDomain: "warehouse-af16e.firebaseapp.com",
@@ -180,8 +184,8 @@
     };
 
     let currentUser = null;
-    window.allCardsData = []; // Store globally for editing
-    window.editTaskId = null; // Track if we are editing or adding
+    window.allCardsData = []; 
+    window.editTaskId = null; 
 
     // Login Handler
     window.handleLogin = () => {
@@ -220,7 +224,7 @@
 
     // Modal Handlers
     window.openAddModal = () => {
-      window.editTaskId = null; // Reset to Add Mode
+      window.editTaskId = null; 
       document.getElementById("newBatchForm").reset();
       document.getElementById("modalTitle").innerText = "Add New PK / Box Entry";
       document.getElementById("addModal").classList.remove("hidden");
@@ -236,9 +240,8 @@
       const item = window.allCardsData.find(x => x.id === id);
       if (!item) return;
       
-      window.editTaskId = id; // Set ID to update later
+      window.editTaskId = id; 
       
-      // Pre-fill form
       document.getElementById("formPk").value = item.pkBatch;
       document.getElementById("formBox").value = item.boxNo;
       document.getElementById("formType").value = item.orderType;
@@ -261,14 +264,14 @@
           allCards.push({ id: docSnap.id, ...docSnap.data() });
         });
 
-        // Ensure newly created tasks are instantly on top (+99999 trick for local timestamps)
+        // Ensure newly created tasks are instantly on top
         allCards.sort((a, b) => {
           const timeA = a.createdAt?.seconds || (Date.now() / 1000 + 99999);
           const timeB = b.createdAt?.seconds || (Date.now() / 1000 + 99999);
           return timeB - timeA;
         });
 
-        window.allCardsData = allCards; // Save to global array
+        window.allCardsData = allCards; 
 
         const visibleCards = allCards.filter(item => {
           if (currentUser.role === 'admin') return true;
@@ -396,5 +399,4 @@
       await updateDoc(doc(db, "warehouse_tasks", id), { pickingStatus: status });
     };
 
-    window.updatePackStatus = async (id, status) => {
-      await updateDoc(doc(db, "warehouse_tasks",
+    window.updatePackStat
