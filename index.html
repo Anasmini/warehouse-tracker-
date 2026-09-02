@@ -6,6 +6,10 @@
   <title>Warehouse Master Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- DIRECT FIREBASE LINKS (No Module Crash Issue) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 </head>
 <body class="bg-slate-100 min-h-screen text-slate-800 font-sans">
 
@@ -47,8 +51,8 @@
 
         <p id="loginError" class="text-xs text-red-500 font-medium text-center hidden">Invalid PIN! Please check and try again.</p>
 
-        <!-- FIX: Added window. to handleLogin() -->
-        <button onclick="window.handleLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition shadow">
+        <!-- Direct Function Call -->
+        <button onclick="handleLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition shadow">
           Login to Dashboard
         </button>
       </div>
@@ -65,12 +69,10 @@
           <span id="displayUserRole" class="text-xs font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-100 text-blue-700"></span>
         </div>
         <div class="flex gap-2 items-center">
-          <!-- FIX: Added window. to openAddModal() -->
-          <button id="addBoxBtn" onclick="window.openAddModal()" class="hidden bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow transition">
+          <button id="addBoxBtn" onclick="openAddModal()" class="hidden bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow transition">
             + New Box / PK
           </button>
-          <!-- FIX: Added window. to handleLogout() -->
-          <button onclick="window.handleLogout()" class="text-slate-500 hover:text-red-600 p-2 rounded-lg text-sm" title="Logout">
+          <button onclick="handleLogout()" class="text-slate-500 hover:text-red-600 p-2 rounded-lg text-sm" title="Logout">
             <i class="fa-solid fa-arrow-right-from-bracket"></i>
           </button>
         </div>
@@ -90,11 +92,10 @@
     <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center mb-4">
         <h3 id="modalTitle" class="text-base font-bold text-slate-900">Add New PK / Box Entry</h3>
-        <!-- FIX: Added window. to closeAddModal() -->
-        <button onclick="window.closeAddModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+        <button onclick="closeAddModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
-      <form id="newBatchForm" class="space-y-3">
+      <form id="newBatchForm" onsubmit="handleFormSubmit(event)" class="space-y-3">
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">PK Batch</label>
@@ -145,8 +146,7 @@
         </div>
 
         <div class="flex gap-2 pt-3">
-          <!-- FIX: Added window. to closeAddModal() -->
-          <button type="button" onclick="window.closeAddModal()" class="w-1/2 py-2 border rounded-lg text-sm text-slate-600 font-medium">Cancel</button>
+          <button type="button" onclick="closeAddModal()" class="w-1/2 py-2 border rounded-lg text-sm text-slate-600 font-medium">Cancel</button>
           <button type="submit" class="w-1/2 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 shadow">Save Box</button>
         </div>
       </form>
@@ -154,11 +154,8 @@
   </div>
 
   <!-- ================= FIREBASE & APP LOGIC ================= -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, serverTimestamp } 
-      from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
+  <script>
+    // 1. Setup Firebase Configuration
     const firebaseConfig = {
       apiKey: "AIzaSyCOY9tUBNH3O9JM3LV9ICgoO2y9PIs9dQY",
       authDomain: "warehouse-af16e.firebaseapp.com",
@@ -168,11 +165,13 @@
       appId: "1:574015704554:web:5f2945974eaa50c85df693"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const ordersCol = collection(db, "warehouse_tasks");
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.firestore();
+    const ordersCol = db.collection("warehouse_tasks");
 
-    // Profile Database
+    // 2. Profile Database
     const USERS = {
       "admin_zoro": { name: "Zoro", role: "admin", pin: "1111" },
       "admin_aditya": { name: "Aditya", role: "admin", pin: "2222" },
@@ -184,11 +183,12 @@
     };
 
     let currentUser = null;
-    window.allCardsData = []; 
-    window.editTaskId = null; 
+    let allCardsData = []; // Store globally for editing
+    let editTaskId = null; // Track if we are editing or adding
+    let unsubscribeFirestore = null;
 
-    // Login Handler
-    window.handleLogin = () => {
+    // 3. Login Handler
+    function handleLogin() {
       const selectedKey = document.getElementById("userSelect").value;
       const enteredPin = document.getElementById("pinInput").value;
       const user = USERS[selectedKey];
@@ -212,35 +212,36 @@
       } else {
         document.getElementById("loginError").classList.remove("hidden");
       }
-    };
+    }
 
-    // Logout Handler
-    window.handleLogout = () => {
+    // 4. Logout Handler
+    function handleLogout() {
       currentUser = null;
+      if (unsubscribeFirestore) unsubscribeFirestore();
       document.getElementById("pinInput").value = "";
       document.getElementById("appScreen").classList.add("hidden");
       document.getElementById("loginScreen").classList.remove("hidden");
-    };
+    }
 
-    // Modal Handlers
-    window.openAddModal = () => {
-      window.editTaskId = null; 
+    // 5. Modal Handlers
+    function openAddModal() {
+      editTaskId = null; 
       document.getElementById("newBatchForm").reset();
       document.getElementById("modalTitle").innerText = "Add New PK / Box Entry";
       document.getElementById("addModal").classList.remove("hidden");
-    };
+    }
 
-    window.closeAddModal = () => {
+    function closeAddModal() {
       document.getElementById("addModal").classList.add("hidden");
       document.getElementById("newBatchForm").reset();
-      window.editTaskId = null;
-    };
+      editTaskId = null;
+    }
 
-    window.openEditModal = (id) => {
-      const item = window.allCardsData.find(x => x.id === id);
+    function openEditModal(id) {
+      const item = allCardsData.find(x => x.id === id);
       if (!item) return;
       
-      window.editTaskId = id; 
+      editTaskId = id; 
       
       document.getElementById("formPk").value = item.pkBatch;
       document.getElementById("formBox").value = item.boxNo;
@@ -251,15 +252,17 @@
       
       document.getElementById("modalTitle").innerText = "Edit PK / Box Entry";
       document.getElementById("addModal").classList.remove("hidden");
-    };
+    }
 
-    // Realtime Database Listener & Role-Based Filtering
+    // 6. Realtime Database Listener
     function listenToDatabase() {
-      onSnapshot(ordersCol, (snapshot) => {
+      if (unsubscribeFirestore) unsubscribeFirestore();
+
+      unsubscribeFirestore = ordersCol.onSnapshot((snapshot) => {
         const grid = document.getElementById("cardsGrid");
         grid.innerHTML = "";
-
         let allCards = [];
+        
         snapshot.forEach((docSnap) => {
           allCards.push({ id: docSnap.id, ...docSnap.data() });
         });
@@ -268,10 +271,10 @@
         allCards.sort((a, b) => {
           const timeA = a.createdAt?.seconds || (Date.now() / 1000 + 99999);
           const timeB = b.createdAt?.seconds || (Date.now() / 1000 + 99999);
-          return timeB - timeA;
+          return timeB - timeA; // Descending (latest on top)
         });
 
-        window.allCardsData = allCards; 
+        allCardsData = allCards; 
 
         const visibleCards = allCards.filter(item => {
           if (currentUser.role === 'admin') return true;
@@ -320,40 +323,37 @@
             </div>
 
             <div class="pt-3 border-t border-slate-100 space-y-2">
-              <!-- PICKER CONTROLS -->
               ${(currentUser.role === 'picker' || currentUser.role === 'admin') ? `
                 <div class="flex gap-1.5 items-center">
                   <span class="text-[11px] font-bold text-slate-400 w-12">Pick:</span>
-                  <button onclick="window.updatePickStatus('${item.id}', 'Assigned')" class="flex-1 py-1 text-xs font-medium rounded ${item.pickingStatus === 'Assigned' ? 'bg-slate-800 text-white' : 'bg-slate-100'}">Assigned</button>
-                  <button onclick="window.updatePickStatus('${item.id}', 'Ongoing')" class="flex-1 py-1 text-xs font-medium rounded ${item.pickingStatus === 'Ongoing' ? 'bg-amber-500 text-white' : 'bg-slate-100'}">Ongoing</button>
-                  <button onclick="window.updatePickStatus('${item.id}', 'Complete')" class="flex-1 py-1 text-xs font-medium rounded ${item.pickingStatus === 'Complete' ? 'bg-emerald-600 text-white' : 'bg-slate-100'}">Done</button>
+                  <button onclick="updatePickStatus('${item.id}', 'Assigned')" class="flex-1 py-1 text-xs font-medium rounded ${item.pickingStatus === 'Assigned' ? 'bg-slate-800 text-white' : 'bg-slate-100'}">Assigned</button>
+                  <button onclick="updatePickStatus('${item.id}', 'Ongoing')" class="flex-1 py-1 text-xs font-medium rounded ${item.pickingStatus === 'Ongoing' ? 'bg-amber-500 text-white' : 'bg-slate-100'}">Ongoing</button>
+                  <button onclick="updatePickStatus('${item.id}', 'Complete')" class="flex-1 py-1 text-xs font-medium rounded ${item.pickingStatus === 'Complete' ? 'bg-emerald-600 text-white' : 'bg-slate-100'}">Done</button>
                 </div>
               ` : ''}
 
-              <!-- PACKER CONTROLS -->
               ${(currentUser.role === 'packer' || currentUser.role === 'admin') ? `
                 <div class="flex gap-1.5 items-center">
                   <span class="text-[11px] font-bold text-slate-400 w-12">Pack:</span>
-                  <button onclick="window.updatePackStatus('${item.id}', 'Assigned')" class="flex-1 py-1 text-xs font-medium rounded ${item.packingStatus === 'Assigned' ? 'bg-slate-800 text-white' : 'bg-slate-100'}">Assigned</button>
-                  <button onclick="window.updatePackStatus('${item.id}', 'Ongoing')" class="flex-1 py-1 text-xs font-medium rounded ${item.packingStatus === 'Ongoing' ? 'bg-amber-500 text-white' : 'bg-slate-100'}">Ongoing</button>
-                  <button onclick="window.updatePackStatus('${item.id}', 'Complete')" class="flex-1 py-1 text-xs font-medium rounded ${item.packingStatus === 'Complete' ? 'bg-emerald-600 text-white' : 'bg-slate-100'}">Done</button>
+                  <button onclick="updatePackStatus('${item.id}', 'Assigned')" class="flex-1 py-1 text-xs font-medium rounded ${item.packingStatus === 'Assigned' ? 'bg-slate-800 text-white' : 'bg-slate-100'}">Assigned</button>
+                  <button onclick="updatePackStatus('${item.id}', 'Ongoing')" class="flex-1 py-1 text-xs font-medium rounded ${item.packingStatus === 'Ongoing' ? 'bg-amber-500 text-white' : 'bg-slate-100'}">Ongoing</button>
+                  <button onclick="updatePackStatus('${item.id}', 'Complete')" class="flex-1 py-1 text-xs font-medium rounded ${item.packingStatus === 'Complete' ? 'bg-emerald-600 text-white' : 'bg-slate-100'}">Done</button>
                 </div>
                 
                 <div class="flex items-center gap-2 pt-1">
                   <input type="number" id="qty_${item.id}" placeholder="Pending Qty" value="${item.pendingQty || ''}" class="w-1/2 border p-1 text-xs rounded text-center">
-                  <button onclick="window.saveQty('${item.id}')" class="w-1/2 bg-slate-200 hover:bg-slate-300 py-1 text-xs font-semibold rounded">Save Qty</button>
+                  <button onclick="saveQty('${item.id}')" class="w-1/2 bg-slate-200 hover:bg-slate-300 py-1 text-xs font-semibold rounded">Save Qty</button>
                 </div>
               ` : ''}
 
-              <!-- ADMIN CONTROLS (Edit / Delete / Error Flag) -->
               ${currentUser.role === 'admin' ? `
                 <div class="flex justify-between items-center pt-2 text-xs border-t border-dashed">
-                  <button onclick="window.toggleErrorFlag('${item.id}', ${item.hasError || false})" class="text-red-600 font-semibold hover:underline">
+                  <button onclick="toggleErrorFlag('${item.id}', ${item.hasError || false})" class="text-red-600 font-semibold hover:underline">
                     ${item.hasError ? 'Clear Error' : 'Flag Error'}
                   </button>
                   <div>
-                    <button onclick="window.openEditModal('${item.id}')" class="text-blue-600 hover:text-blue-800 font-semibold mr-3">Edit</button>
-                    <button onclick="window.deleteDocItem('${item.id}')" class="text-slate-400 hover:text-red-600 font-medium">Delete</button>
+                    <button onclick="openEditModal('${item.id}')" class="text-blue-600 hover:text-blue-800 font-semibold mr-3">Edit</button>
+                    <button onclick="deleteDocItem('${item.id}')" class="text-slate-400 hover:text-red-600 font-medium">Delete</button>
                   </div>
                 </div>
               ` : ''}
@@ -364,8 +364,8 @@
       });
     }
 
-    // Submit New/Edit Batch (Admin only)
-    document.getElementById("newBatchForm").addEventListener("submit", async (e) => {
+    // 7. Submit Form
+    async function handleFormSubmit(e) {
       e.preventDefault();
       
       const payload = {
@@ -377,26 +377,36 @@
         notes: document.getElementById("formNotes").value
       };
 
-      if (window.editTaskId) {
+      if (editTaskId) {
         // UPDATE EXISTING TASK
-        await updateDoc(doc(db, "warehouse_tasks", window.editTaskId), payload);
+        await ordersCol.doc(editTaskId).update(payload);
       } else {
         // CREATE NEW TASK
         payload.pickingStatus = "Assigned";
         payload.packingStatus = "Assigned";
         payload.pendingQty = "";
         payload.hasError = false;
-        payload.createdAt = serverTimestamp();
+        payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
         
-        await addDoc(ordersCol, payload);
+        await ordersCol.add(payload);
       }
       
-      window.closeAddModal();
-    });
+      closeAddModal();
+    }
 
-    // Action Methods
-    window.updatePickStatus = async (id, status) => {
-      await updateDoc(doc(db, "warehouse_tasks", id), { pickingStatus: status });
-    };
+    // 8. Action Methods
+    async function updatePickStatus(id, status) {
+      await ordersCol.doc(id).update({ pickingStatus: status });
+    }
 
-    window.updatePackStat
+    async function updatePackStatus(id, status) {
+      await ordersCol.doc(id).update({ packingStatus: status });
+    }
+
+    async function saveQty(id) {
+      const val = document.getElementById(`qty_${id}`).value;
+      await ordersCol.doc(id).update({ pendingQty: val });
+    }
+
+    async function toggleErrorFlag(id, current) {
+      await ordersCol.d
